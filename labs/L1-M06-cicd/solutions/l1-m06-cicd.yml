@@ -1,0 +1,76 @@
+# L1·M06 lab pipeline: SOLUTION. Copy it over .github/workflows/l1-m06-cicd.yml to run the whole lab.
+# Build once (tagged with the commit SHA), sign keyless with the GitHub OIDC identity, attach an SBOM, then deploy
+# the same digest through the Argo Rollout canary. Self-hosted runner "sre-lab" only (see the lab README).
+name: L1-M06 lab pipeline
+
+on:
+  push:
+    paths:
+      - "labs/L1-M06-cicd/app/**"
+      - ".github/workflows/l1-m06-cicd.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: registry.lab:5000/sample-app
+  APP_DIR: labs/L1-M06-cicd/app
+
+jobs:
+  commit:
+    if: vars.SRE_LAB_RUNNER == 'true'
+    runs-on: [self-hosted, sre-lab]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Unit tests
+        run: docker run --rm -v "$PWD/$APP_DIR:/src" -w /src golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 go test ./...
+
+  build:                                    # step 1
+    needs: commit
+    runs-on: [self-hosted, sre-lab]
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the image, tagged with the commit SHA
+        run: docker build --build-arg VERSION="${GITHUB_SHA::7}" -t "$IMAGE:$GITHUB_SHA" "$APP_DIR"
+      - name: Push to the lab registry
+        id: push
+        run: |
+          docker push "$IMAGE:$GITHUB_SHA"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$GITHUB_SHA" | cut -d@ -f2)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Pushed $IMAGE@$digest" >> "$GITHUB_STEP_SUMMARY"
+
+  sign:                                     # steps 2 and 7
+    needs: build
+    runs-on: [self-hosted, sre-lab]
+    permissions:
+      contents: read
+      id-token: write                       # the GitHub OIDC token cosign signs with (keyless)
+    env:
+      REF: registry.lab:5000/sample-app@${{ needs.build.outputs.digest }}
+    steps:
+      - name: Sign the image (keyless, GitHub OIDC, recorded in Rekor)
+        run: cosign sign --yes --allow-http-registry "$REF"
+      - name: Generate the SBOM with Syft
+        env:
+          SYFT_REGISTRY_INSECURE_USE_HTTP: "true"
+        run: syft "$REF" -o spdx-json=sbom.spdx.json -o table
+      - name: Attach the SBOM as a signed attestation
+        run: cosign attest --yes --allow-http-registry --type spdxjson --predicate sbom.spdx.json "$REF"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.spdx.json
+
+  deploy:                                   # step 5
+    needs: [build, sign]
+    runs-on: [self-hosted, sre-lab]
+    steps:
+      - name: Hand the signed digest to the canary
+        run: |
+          kubectl argo rollouts set image sample-app -n m06 \
+            app="registry.lab:5000/sample-app@${{ needs.build.outputs.digest }}"
+          kubectl argo rollouts get rollout sample-app -n m06

@@ -1,0 +1,32 @@
+# L1·M06 lab pipeline: STARTER. Complete it in the lab steps (labs/L1-M06-cicd/README.md).
+# It runs only on a self-hosted runner labelled "sre-lab" (the pipeline pushes to the lab registry and deploys to
+# the kind cluster on your machine), and only when the repository variable SRE_LAB_RUNNER is "true".
+name: L1-M06 lab pipeline
+
+on:
+  push:
+    paths:
+      - "labs/L1-M06-cicd/app/**"
+      - ".github/workflows/l1-m06-cicd.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: registry.lab:5000/sample-app
+  APP_DIR: labs/L1-M06-cicd/app
+
+jobs:
+  commit:
+    if: vars.SRE_LAB_RUNNER == 'true'
+    runs-on: [self-hosted, sre-lab]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Unit tests
+        run: docker run --rm -v "$PWD/$APP_DIR:/src" -w /src golang:1.27-alpine@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 go test ./...
+
+  # Step 1: add a build job that builds the image tagged with the commit SHA and pushes it to the lab registry.
+  # Step 2: add a sign job: keyless cosign signing with the GitHub OIDC identity (needs permission id-token: write).
+  # Step 5: add a deploy job that hands the signed image to the Argo Rollout.
+  # Step 7: generate an SBOM with Syft and attach it to the image as an attestation.

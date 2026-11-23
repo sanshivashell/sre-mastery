@@ -1,0 +1,30 @@
+# Step 3: admission control. Every Pod in namespace m06 that runs an image from the lab registry must carry a
+# keyless cosign signature made by this repo's lab workflow (GitHub OIDC), recorded in Rekor. Anything else is
+# rejected. Working in a fork? Change "sanshivashell" in the subject to your GitHub account or org.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-image-signatures
+spec:
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: verify-signature
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [m06]
+      verifyImages:
+        - imageReferences: ["registry.lab:5000/*"]
+          failureAction: Enforce
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+          attestors:
+            - entries:
+                - keyless:
+                    subject: "https://github.com/sanshivashell/sre-mastery/.github/workflows/l1-m06-cicd.yml@refs/heads/*"
+                    issuer: "https://token.actions.githubusercontent.com"
+                    rekor:
+                      url: https://rekor.sigstore.dev

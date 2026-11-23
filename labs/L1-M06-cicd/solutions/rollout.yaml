@@ -1,0 +1,61 @@
+# Step 4 (solution): 5% -> analysis -> 25% -> analysis -> 100%. Each analysis is a 5-minute window
+# (10 measurements, 30 s apart) of the canary's success rate and p99 latency; a failure aborts the rollout
+# and Argo Rollouts returns all traffic to the stable version.
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: sample-app
+  namespace: m06
+spec:
+  replicas: 20            # 20 pods, so a 5% canary is exactly one pod
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: sample-app
+  template:
+    metadata:
+      labels:
+        app: sample-app
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: app
+          image: registry.lab:5000/sample-app:setup   # the pipeline replaces this with a signed digest
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }   # keep serving until the Service stops sending traffic here
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+  strategy:
+    canary:
+      steps:
+        - setWeight: 5            # 5% of traffic to the new version
+        - analysis:               # SLI-based automated check
+            templates:
+              - templateName: success-rate
+              - templateName: p99-latency
+            args:
+              - name: service-name
+                value: sample-app
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 25           # if analysis passed, move to 25%
+        - analysis:
+            templates:
+              - templateName: success-rate
+              - templateName: p99-latency
+            args:
+              - name: service-name
+                value: sample-app
+              - name: canary-hash
+                valueFrom:
+                  podTemplateHashValue: Latest
+        - setWeight: 100          # full rollout if all gates passed

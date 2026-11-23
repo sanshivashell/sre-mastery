@@ -1,0 +1,37 @@
+# Step 4 (starter): configure the canary steps, 5% -> 25% -> 100%, with a 5-minute analysis window after
+# 5% and after 25% checking success rate and p99 latency (the two AnalysisTemplates in this folder).
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: sample-app
+  namespace: m06
+spec:
+  replicas: 20            # 20 pods, so a 5% canary is exactly one pod
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: sample-app
+  template:
+    metadata:
+      labels:
+        app: sample-app
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: app
+          image: registry.lab:5000/sample-app:setup   # the pipeline replaces this with a signed digest
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet: { path: /healthz, port: 8080 }
+            periodSeconds: 5
+          lifecycle:
+            preStop:
+              sleep: { seconds: 5 }   # keep serving until the Service stops sending traffic here
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { memory: 64Mi }
+  strategy:
+    canary:
+      steps: []           # TODO step 4

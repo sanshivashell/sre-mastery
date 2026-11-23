@@ -1,0 +1,22 @@
+# p99 latency of the canary's pods, same 5-minute window: under 500 ms passes.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: p99-latency
+  namespace: m06
+spec:
+  args:
+    - name: service-name
+    - name: canary-hash
+  metrics:
+    - name: p99-latency
+      initialDelay: 60s     # Prometheus needs the new pods' first scrapes
+      interval: 30s
+      count: 10
+      successCondition: result[0] < 0.5
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            histogram_quantile(0.99, sum by (le) (rate(http_request_duration_seconds_bucket{service="{{args.service-name}}",rollouts_pod_template_hash="{{args.canary-hash}}"}[5m])))

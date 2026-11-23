@@ -1,0 +1,25 @@
+# Success rate of the canary's pods only (rollouts_pod_template_hash = the new ReplicaSet), measured every 30 s
+# for 10 measurements: a 5-minute analysis window. At least 99% must succeed; 2 failed measurements are allowed.
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: success-rate
+  namespace: m06
+spec:
+  args:
+    - name: service-name
+    - name: canary-hash
+  metrics:
+    - name: success-rate
+      initialDelay: 60s     # Prometheus needs the new pods' first scrapes
+      interval: 30s
+      count: 10
+      successCondition: result[0] >= 0.99
+      failureLimit: 2
+      provider:
+        prometheus:
+          address: http://prometheus.monitoring.svc:9090
+          query: |
+            sum(rate(http_requests_total{service="{{args.service-name}}",rollouts_pod_template_hash="{{args.canary-hash}}",status!~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{service="{{args.service-name}}",rollouts_pod_template_hash="{{args.canary-hash}}"}[5m]))

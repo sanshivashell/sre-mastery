@@ -1,0 +1,12 @@
+# kind cluster for the L1·M06 lab: one control-plane node, one worker.
+# The lab registry (registry.lab:5000, plain HTTP, started by setup.sh) is wired into containerd here.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: m06-lab
+nodes:
+  - role: control-plane
+  - role: worker
+containerdConfigPatches:
+  - |-
+    [plugins."io.containerd.grpc.v1.cri".registry]
+      config_path = "/etc/containerd/certs.d"

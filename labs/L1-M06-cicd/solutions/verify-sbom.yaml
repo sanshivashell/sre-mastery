@@ -1,0 +1,27 @@
+# Step 7 (extension): also require an SPDX SBOM attestation, signed by the same workflow identity.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-sbom-attestation
+spec:
+  background: false
+  webhookTimeoutSeconds: 30
+  rules:
+    - name: require-sbom
+      match:
+        any:
+          - resources:
+              kinds: [Pod]
+              namespaces: [m06]
+      verifyImages:
+        - imageReferences: ["registry.lab:5000/*"]
+          failureAction: Enforce
+          attestations:
+            - type: https://spdx.dev/Document
+              attestors:
+                - entries:
+                    - keyless:
+                        subject: "https://github.com/sanshivashell/sre-mastery/.github/workflows/l1-m06-cicd.yml@refs/heads/*"
+                        issuer: "https://token.actions.githubusercontent.com"
+                        rekor:
+                          url: https://rekor.sigstore.dev
