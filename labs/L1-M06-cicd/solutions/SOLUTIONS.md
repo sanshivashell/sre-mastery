@@ -17,6 +17,9 @@ git commit -am "M06 lab: complete the pipeline" && git push
 - **Keyless signing.** The `sign` job has `id-token: write`, so GitHub issues it an OIDC token. `cosign sign` exchanges
   that token for a short-lived certificate naming the workflow, signs the digest, and records the signature in Rekor.
   No key is stored anywhere. The job log prints the Rekor log index; look it up at <https://search.sigstore.dev>.
+- **Two flags on cosign.** `--new-bundle-format=false --use-signing-config=false` keep cosign v3 on the classic
+  signature format, the one Kyverno's ClusterPolicy verifies and a plain `registry:3` can serve (cosign v3's default
+  Sigstore bundles are stored as OCI referrers, which neither reads).
 - **SBOM.** Syft lists every package in the image (`-o table` prints it in the job log); `cosign attest` attaches the
   SPDX document to the image as a signed attestation, and the workflow also uploads it as a build artifact.
 - **Deploy.** `kubectl argo rollouts set image` gives the Rollout the new digest; the canary steps take it from there.
@@ -34,6 +37,8 @@ cosign verify --allow-http-registry \
 
 `kyverno/verify-signatures.yaml` makes Kyverno check every Pod in namespace `m06` that runs an image from
 `registry.lab:5000`: the image must carry a keyless signature from your fork's lab workflow, recorded in Rekor.
+The policy's `roots` is Sigstore's public certificate authority (Fulcio): keyless certificates are issued by it, and
+naming it lets Kyverno verify them without fetching Sigstore's trust root at start-up.
 The unsigned image in the README is rejected at admission. So is an image someone replaces in the registry
 under a tag that was signed, because the new content has a new digest and no signature.
 
