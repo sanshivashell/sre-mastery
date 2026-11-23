@@ -43,6 +43,8 @@ jobs:
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "Pushed $IMAGE@$digest" >> "$GITHUB_STEP_SUMMARY"
 
+  # cosign v3 writes Sigstore bundles by default; --new-bundle-format=false keeps the classic signature format that
+  # Kyverno's ClusterPolicy (the companion's policy) verifies, and that a plain registry can serve.
   sign:                                     # steps 2 and 7
     needs: build
     runs-on: [self-hosted, sre-lab]
@@ -53,13 +55,13 @@ jobs:
       REF: registry.lab:5000/sample-app@${{ needs.build.outputs.digest }}
     steps:
       - name: Sign the image (keyless, GitHub OIDC, recorded in Rekor)
-        run: cosign sign --yes --allow-http-registry "$REF"
+        run: cosign sign --yes --allow-http-registry --new-bundle-format=false --use-signing-config=false "$REF"
       - name: Generate the SBOM with Syft
         env:
           SYFT_REGISTRY_INSECURE_USE_HTTP: "true"
         run: syft "$REF" -o spdx-json=sbom.spdx.json -o table
       - name: Attach the SBOM as a signed attestation
-        run: cosign attest --yes --allow-http-registry --type spdxjson --predicate sbom.spdx.json "$REF"
+        run: cosign attest --yes --allow-http-registry --new-bundle-format=false --use-signing-config=false --type spdxjson --predicate sbom.spdx.json "$REF"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sbom-${{ github.sha }}
