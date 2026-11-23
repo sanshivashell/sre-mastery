@@ -23,7 +23,7 @@ import (
 var version = "dev"
 
 // failRoutes return HTTP 500. Empty on main; the break-me branch fills it.
-var failRoutes = map[string]bool{}
+var failRoutes = map[string]bool{"/api/items": true, "/api/checkout": true}
 
 var (
 	requests = promauto.NewCounterVec(prometheus.CounterOpts{
