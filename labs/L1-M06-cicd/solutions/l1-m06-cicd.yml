@@ -7,6 +7,7 @@ on:
   push:
     paths:
       - "labs/L1-M06-cicd/app/**"
+      - "labs/L1-M06-cicd/rollout/**"
       - ".github/workflows/l1-m06-cicd.yml"
   workflow_dispatch: {}
 
@@ -70,9 +71,11 @@ jobs:
   deploy:                                   # step 5
     needs: [build, sign]
     runs-on: [self-hosted, sre-lab]
+    env:
+      REF: registry.lab:5000/sample-app@${{ needs.build.outputs.digest }}
     steps:
-      - name: Hand the signed digest to the canary
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Apply the Rollout with the signed digest (its canary steps come from rollout/rollout.yaml)
         run: |
-          kubectl argo rollouts set image sample-app -n m06 \
-            app="registry.lab:5000/sample-app@${{ needs.build.outputs.digest }}"
+          sed "s|image: registry.lab:5000/sample-app[^ ]*|image: $REF|" labs/L1-M06-cicd/rollout/rollout.yaml | kubectl apply -f -
           kubectl argo rollouts get rollout sample-app -n m06

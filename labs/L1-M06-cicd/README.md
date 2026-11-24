@@ -76,9 +76,12 @@ so the policy accepts images signed by your fork's workflow.
    ```
 
 4. **Configure the canary.** In `rollout/rollout.yaml`, set the steps to 5% → 25% → 100% with a 5-minute analysis
-   window after 5% and after 25%, using the `success-rate` and `p99-latency` templates. Apply it.
-5. **Deploy a healthy version.** Add a deploy job that sets the Rollout's image to the signed digest. Push a commit
-   that changes the app, watch the pipeline build, sign and deploy, and watch the Rollout move through every weight:
+   window after 5% and after 25%, using the `success-rate` and `p99-latency` templates. Don't `kubectl apply` it
+   yourself: after step 3 Kyverno admits only signed images, and the file names the unsigned setup image. The pipeline
+   applies it in step 5, with the signed digest in its place.
+5. **Deploy a healthy version.** Add a deploy job that applies `rollout/rollout.yaml` with the signed digest
+   (`sed` the image line, pipe to `kubectl apply -f -`). Commit your steps from step 4, push, watch the pipeline build,
+   sign and deploy, and watch the Rollout move through every weight:
 
    ```bash
    kubectl argo rollouts get rollout sample-app -n m06 --watch

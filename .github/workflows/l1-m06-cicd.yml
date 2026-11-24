@@ -7,6 +7,7 @@ on:
   push:
     paths:
       - "labs/L1-M06-cicd/app/**"
+      - "labs/L1-M06-cicd/rollout/**"
       - ".github/workflows/l1-m06-cicd.yml"
   workflow_dispatch: {}
 
@@ -28,5 +29,5 @@ jobs:
 
   # Step 1: add a build job that builds the image tagged with the commit SHA and pushes it to the lab registry.
   # Step 2: add a sign job: keyless cosign signing with the GitHub OIDC identity (needs permission id-token: write).
-  # Step 5: add a deploy job that hands the signed image to the Argo Rollout.
+  # Step 5: add a deploy job that applies rollout/rollout.yaml with the signed digest in place of the image.
   # Step 7: generate an SBOM with Syft and attach it to the image as an attestation.

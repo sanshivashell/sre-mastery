@@ -22,7 +22,8 @@ git commit -am "M06 lab: complete the pipeline" && git push
   Sigstore bundles are stored as OCI referrers, which neither reads).
 - **SBOM.** Syft lists every package in the image (`-o table` prints it in the job log); `cosign attest` attaches the
   SPDX document to the image as a signed attestation, and the workflow also uploads it as a build artifact.
-- **Deploy.** `kubectl argo rollouts set image` gives the Rollout the new digest; the canary steps take it from there.
+- **Deploy.** The `deploy` job applies `rollout/rollout.yaml` with the signed digest in place of the image, so the
+  canary steps you commit and the image you built ship together; Argo Rollouts takes it from there.
 
 Check a signature yourself:
 
@@ -46,7 +47,7 @@ under a tag that was signed, because the new content has a new digest and no sig
 
 `rollout.yaml` in this folder has the finished steps: 5% → analysis → 25% → analysis → 100%. Each analysis runs both
 templates for 10 measurements, 30 seconds apart: a 5-minute window. With 20 replicas, 5% is exactly one pod.
-`kubectl apply -f labs/L1-M06-cicd/solutions/rollout.yaml`
+Copy it over `rollout/rollout.yaml`, commit and push: the pipeline applies it with the signed digest.
 
 ## Step 6: the broken version
 
