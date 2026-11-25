@@ -46,15 +46,31 @@ if ! grep -q "$REGISTRY" /tmp/m06-Corefile; then             # pods (Kyverno) re
 fi
 rm -f /tmp/m06-Corefile /tmp/m06-Corefile.new
 
+step "images: pulled once on this machine, then loaded into the cluster"
+# The nodes never pull from the internet: a registry address that hangs (seen in a real run) would stall the
+# kubelet, which pulls one image at a time. Each image is pulled here with retries and loaded with kind.
+ARGO_YAML=$(curl -fsSL "https://github.com/argoproj/argo-rollouts/releases/download/${ARGO_ROLLOUTS_VERSION}/install.yaml")
+KYVERNO_YAML=$(curl -fsSL "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/install.yaml" \
+  | sed 's/--allowInsecureRegistry=false/--allowInsecureRegistry=true/')
+IMAGES=$(printf "%s\n%s\n" "$ARGO_YAML" "$KYVERNO_YAML" | cat - k8s/prometheus.yaml k8s/loadgen.yaml \
+  | sed -nE 's/^[[:space:]-]*image:[[:space:]]*"?([^"[:space:]]+)"?.*/\1/p' | sort -u)
+for image in $IMAGES; do
+  for try in 1 2 3 4 5; do docker pull -q "$image" >/dev/null 2>&1 && break; echo "  retrying $image"; sleep 5; done
+done
+# One platform only: loading multi-platform images into kind fails ("content digest … not found").
+ARCHIVE=$(mktemp -t m06-images.XXXXXX)
+docker save --platform "linux/$(docker version -f '{{.Server.Arch}}')" -o "$ARCHIVE" $IMAGES
+kind load image-archive --name "$CLUSTER" "$ARCHIVE" >/dev/null
+rm -f "$ARCHIVE"
+echo "$(echo "$IMAGES" | wc -l | tr -d ' ') images loaded"
+
 step "Argo Rollouts ${ARGO_ROLLOUTS_VERSION}"
 kubectl create namespace argo-rollouts --dry-run=client -o yaml | kubectl apply -f - >/dev/null
-kubectl apply --server-side -n argo-rollouts -f "https://github.com/argoproj/argo-rollouts/releases/download/${ARGO_ROLLOUTS_VERSION}/install.yaml" >/dev/null
+echo "$ARGO_YAML" | kubectl apply --server-side -n argo-rollouts -f - >/dev/null
 
 step "Kyverno ${KYVERNO_VERSION}"
-# The lab registry speaks plain HTTP, so Kyverno must be allowed to read it (its install sets this to false).
-curl -fsSL "https://github.com/kyverno/kyverno/releases/download/${KYVERNO_VERSION}/install.yaml" \
-  | sed 's/--allowInsecureRegistry=false/--allowInsecureRegistry=true/' \
-  | kubectl apply --server-side -f - >/dev/null
+# The lab registry speaks plain HTTP, so Kyverno must be allowed to read it (set above, in KYVERNO_YAML).
+echo "$KYVERNO_YAML" | kubectl apply --server-side -f - >/dev/null
 
 step "Prometheus"
 kubectl apply -f k8s/prometheus.yaml >/dev/null
