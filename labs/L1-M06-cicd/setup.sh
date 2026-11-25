@@ -18,6 +18,9 @@ if ! grep -qE "^[^#]*[[:space:]]${REGISTRY}([[:space:]]|$)" /etc/hosts; then
 fi
 
 step "kind cluster ${CLUSTER}"
+# kind's network, IPv4 only: on some hosts the IPv6 route to Docker Hub hangs, and the kubelet pulls one image at a
+# time, so one stuck pull stalls every pod on the node (found in a real run, 2026-11-25).
+docker network inspect kind >/dev/null 2>&1 || docker network create kind >/dev/null
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then echo "already running"
 else kind create cluster --config kind.yaml; fi
 
